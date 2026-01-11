@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎆 3D Vuurwerk Straat 🎆</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        
+        #info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 14px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 20px;
+            border-radius: 10px;
+            z-index: 100;
+            pointer-events: none;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+            padding: 8px 15px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 12px;
+        }
+        
+        .firework-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .firework-btn.selected {
+            border-color: white;
+            box-shadow: 0 0 15px rgba(255,255,255,0.5);
+        }
+        
+        .rocket-btn { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
+        .fountain-btn { background: linear-gradient(135deg, #54a0ff, #2e86de); }
+        .box-btn { background: linear-gradient(135deg, #5f27cd, #341f97); }
+        
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 50;
+        }
+        
+        #startScreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: white;
+            cursor: pointer;
+        }
+        
+        #startScreen h1 { font-size: 48px; margin-bottom: 20px; }
+        #startScreen p { font-size: 18px; margin-bottom: 10px; opacity: 0.8; }
+        #startScreen .start-hint { margin-top: 30px; font-size: 24px; animation: pulse 2s infinite; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div id="startScreen">
+        <h1>🎆 Vuurwerk Straat 🎆</h1>
+        <p>🎮 WASD = Lopen</p>
+        <p>🖱️ Muis = Rondkijken</p>
+        <p>🖱️ Klik = Vuurwerk plaatsen</p>
+        <p>⌨️ 1, 2, 3 = Vuurwerk kiezen</p>
+        <p class="start-hint">👆 Klik om te starten</p>
+    </div>
+    
+    <div id="crosshair"></div>
+    
+    <div class="controls">
+        <button class="firework-btn rocket-btn selected" id="btn-rocket">1: 🚀 Vuurpijl</button>
+        <button class="firework-btn fountain-btn" id="btn-fountain">2: ⛲ Fontein</button>
+        <button class="firework-btn box-btn" id="btn-box">3: 📦 Doos</button>
+    </div>
+    
+    <div id="info">WASD = Lopen | Muis = Kijken | Klik = Plaatsen | 1,2,3 = Selecteren</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game state
+        let selectedType = 'rocket';
+        let isPlaying = false;
+        
+        // Three.js setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a20);
+        scene.fog = new THREE.FogExp2(0x0a0a20, 0.015);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(0, 1.7, 0);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        document.body.appendChild(renderer.domElement);
+        
+        // Lighting
+        scene.add(new THREE.AmbientLight(0x404080, 0.4));
+        const moonLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+        moonLight.position.set(50, 100, 50);
+        scene.add(moonLight);
+        
+        // Ground
+        const street = new THREE.Mesh(
+            new THREE.PlaneGeometry(20, 200),
+            new THREE.MeshLambertMaterial({ color: 0x333333 })
+        );
+        street.rotation.x = -Math.PI / 2;
+        scene.add(street);
+        
+        // Sidewalks
+        const sidewalkMat = new THREE.MeshLambertMaterial({ color: 0x555555 });
+        const leftSidewalk = new THREE.Mesh(new THREE.PlaneGeometry(4, 200), sidewalkMat);
+        leftSidewalk.rotation.x = -Math.PI / 2;
+        leftSidewalk.position.set(-12, 0.02, 0);
+        scene.add(leftSidewalk);
+        
+        const rightSidewalk = new THREE.Mesh(new THREE.PlaneGeometry(4, 200), sidewalkMat);
+        rightSidewalk.rotation.x = -Math.PI / 2;
+        rightSidewalk.position.set(12, 0.02, 0);
+        scene.add(rightSidewalk);
+        
+        // Houses
+        function createHouse(x, z, w, h, d, color) {
+            const g = new THREE.Group();
+            const building = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+            building.position.y = h / 2;
+            g.add(building);
+            
+            const roof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.75, h * 0.4, 4), new THREE.MeshLambertMaterial({ color: 0x442222 }));
+            roof.position.y = h + h * 0.2;
+            roof.rotation.y = Math.PI / 4;
+            g.add(roof);
+            
+            const winMat = new THREE.MeshBasicMaterial({ color: 0xffdd88 });
+            for (let row = 0; row < 2; row++) {
+                for (let col = 0; col < 2; col++) {
+                    if (Math.random() > 0.3) {
+                        const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.18, h * 0.14), winMat);
+                        win.position.set((col - 0.5) * w * 0.4, h * 0.3 + row * h * 0.35, d / 2 + 0.01);
+                        g.add(win);
+                    }
+                }
+            }
+            g.position.set(x, 0, z);
+            return g;
+        }
+        
+        const houseColors = [0x8B4513, 0x654321, 0x5D4E37, 0x704214, 0x3D2914];
+        for (let z = -80; z <= 80; z += 18) {
+            scene.add(createHouse(-18, z, 7, 6, 9, houseColors[Math.floor(Math.random() * houseColors.length)]));
+            scene.add(createHouse(18, z, 7, 6, 9, houseColors[Math.floor(Math.random() * houseColors.length)]));
+        }
+        
+        // Street lights
+        const poleGeo = new THREE.CylinderGeometry(0.08, 0.08, 4);
+        const poleMat = new THREE.MeshLambertMaterial({ color: 0x333333 });
+        const lightGeo = new THREE.SphereGeometry(0.25);
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+        
+        for (let z = -60; z <= 60; z += 25) {
+            const p1 = new THREE.Mesh(poleGeo, poleMat); p1.position.set(-9, 2, z); scene.add(p1);
+            const l1 = new THREE.Mesh(lightGeo, lightMat); l1.position.set(-9, 4, z); scene.add(l1);
+            const p2 = new THREE.Mesh(poleGeo, poleMat); p2.position.set(9, 2, z); scene.add(p2);
+            const l2 = new THREE.Mesh(lightGeo, lightMat); l2.position.set(9, 4, z); scene.add(l2);
+        }
+        
+        // Stars
+        const starGeo = new THREE.BufferGeometry();
+        const starPos = new Float32Array(500 * 3);
+        for (let i = 0; i < 500; i++) {
+            starPos[i * 3] = (Math.random() - 0.5) * 400;
+            starPos[i * 3 + 1] = Math.random() * 80 + 20;
+            starPos[i * 3 + 2] = (Math.random() - 0.5) * 400;
+        }
+        starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+        scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 })));
+        
+        // Controls
+        const moveSpeed = 0.15;
+        const lookSpeed = 0.002;
+        const keys = { w: false, a: false, s: false, d: false };
+        let yaw = 0, pitch = 0;
+        
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key in keys) keys[key] = true;
+            if (key === '1') selectType('rocket');
+            if (key === '2') selectType('fountain');
+            if (key === '3') selectType('box');
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key in keys) keys[key] = false;
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isPlaying) return;
+            yaw -= e.movementX * lookSpeed;
+            pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * lookSpeed));
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+        });
+        
+        document.getElementById('startScreen').addEventListener('click', () => {
+            document.body.requestPointerLock();
+        });
+        
+        document.addEventListener('pointerlockchange', () => {
+            isPlaying = document.pointerLockElement === document.body;
+            document.getElementById('startScreen').style.display = isPlaying ? 'none' : 'flex';
+        });
+        
+        // PARTICLES - Simple array of meshes (more reliable than Points)
+        const particles = [];
+        const particleGeo = new THREE.SphereGeometry(0.08, 4, 4);
+        
+        function addParticle(pos, color, vel) {
+            if (particles.length > 400) return; // Limit for performance
+            
+            const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color[0], color[1], color[2]) });
+            const mesh = new THREE.Mesh(particleGeo, mat);
+            mesh.position.copy(pos);
+            mesh.userData = {
+                velocity: vel.clone(),
+                life: 1
+            };
+            scene.add(mesh);
+            particles.push(mesh);
+        }
+        
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.velocity);
+                p.userData.velocity.y -= 0.008; // Gravity
+                p.userData.life -= 0.02;
+                p.scale.setScalar(Math.max(0.1, p.userData.life));
+                
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    p.material.dispose();
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        // Color schemes
+        const colorSchemes = [
+            [[1,0,0], [1,0.3,0.3]],
+            [[0,1,0], [0.3,1,0.3]],
+            [[0,0.4,1], [0.3,0.6,1]],
+            [[1,1,0], [1,1,0.3]],
+            [[1,0,1], [1,0.3,1]],
+            [[0,1,1], [0.3,1,1]],
+            [[1,0.5,0], [1,0.7,0.3]],
+            [[1,0.2,0.6], [1,0.5,0.8]],
+            [[1,0,0], [1,0.5,0], [1,1,0], [0,1,0], [0,1,1], [0,0.4,1], [1,0,1]],
+        ];
+        let colorIndex = 0;
+        
+        function getNextColorScheme() {
+            const s = colorSchemes[colorIndex];
+            colorIndex = (colorIndex + 1) % colorSchemes.length;
+            return s;
+        }
+        
+        // Explosion
+        function createExplosion(pos, colorScheme, count, speed) {
+            for (let i = 0; i < count; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+                const spd = speed * (0.5 + Math.random() * 0.5);
+                const vel = new THREE.Vector3(
+                    Math.sin(phi) * Math.cos(theta) * spd,
+                    Math.sin(phi) * Math.sin(theta) * spd,
+                    Math.cos(phi) * spd
+                );
+                const color = colorScheme[Math.floor(Math.random() * colorScheme.length)];
+                addParticle(pos.clone(), color, vel);
+            }
+        }
+        
+        // Fireworks
+        const fireworks = [];
+        
+        function createRocket(position) {
+            const g = new THREE.Group();
+            
+            const body = new THREE.Mesh(
+                new THREE.ConeGeometry(0.08, 0.35, 6),
+                new THREE.MeshLambertMaterial({ color: 0x666666 })
+            );
+            body.rotation.x = Math.PI;
+            body.position.y = 0.18;
+            g.add(body);
+            
+            const fuse = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.015, 0.015, 0.25),
+                new THREE.MeshBasicMaterial({ color: 0x8B4513 })
+            );
+            fuse.position.set(0.12, 0.08, 0);
+            fuse.rotation.z = Math.PI / 2;
+            g.add(fuse);
+            
+            const spark = new THREE.Mesh(
+                new THREE.SphereGeometry(0.04),
+                new THREE.MeshBasicMaterial({ color: 0xff6600 })
+            );
+            spark.position.set(0.25, 0.08, 0);
+            g.add(spark);
+            
+            g.position.copy(position);
+            g.userData = {
+                type: 'rocket',
+                body, fuse, spark,
+                startTime: Date.now(),
+                launched: false,
+                colorScheme: getNextColorScheme(),
+                targetHeight: 12 + Math.random() * 8
+            };
+            return g;
+        }
+        
+        function createFountain(position) {
+            const g = new THREE.Group();
+            
+            const base = new THREE.Mesh(
+                new THREE.BoxGeometry(0.25, 0.18, 0.25),
+                new THREE.MeshLambertMaterial({ color: 0x3498db })
+            );
+            base.position.y = 0.09;
+            g.add(base);
+            
+            const fuse = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.015, 0.015, 0.2),
+                new THREE.MeshBasicMaterial({ color: 0x8B4513 })
+            );
+            fuse.position.set(0.15, 0.08, 0);
+            fuse.rotation.z = Math.PI / 2;
+            g.add(fuse);
+            
+            const spark = new THREE.Mesh(
+                new THREE.SphereGeometry(0.035),
+                new THREE.MeshBasicMaterial({ color: 0xff6600 })
+            );
+            spark.position.set(0.26, 0.08, 0);
+            g.add(spark);
+            
+            g.position.copy(position);
+            g.userData = {
+                type: 'fountain',
+                fuse, spark,
+                startTime: Date.now(),
+                active: false,
+                activeStartTime: 0,
+                colorScheme: getNextColorScheme()
+            };
+            return g;
+        }
+        
+        function createBox(position) {
+            const g = new THREE.Group();
+            
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 0.12, 0.25),
+                new THREE.MeshLambertMaterial({ color: 0x8e44ad })
+            );
+            box.position.y = 0.06;
+            g.add(box);
+            
+            const rockets = [];
+            for (let i = 0; i < 5; i++) {
+                const r = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.025, 0.1, 5),
+                    new THREE.MeshLambertMaterial({ color: 0x555555 })
+                );
+                r.position.set(-0.15 + i * 0.075, 0.17, 0);
+                g.add(r);
+                rockets.push(r);
+            }
+            
+            const fuse = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.015, 0.015, 0.3),
+                new THREE.MeshBasicMaterial({ color: 0x8B4513 })
+            );
+            fuse.position.set(0.38, 0.08, 0);
+            fuse.rotation.z = Math.PI / 2;
+            g.add(fuse);
+            
+            const spark = new THREE.Mesh(
+                new THREE.SphereGeometry(0.035),
+                new THREE.MeshBasicMaterial({ color: 0xff6600 })
+            );
+            spark.position.set(0.54, 0.08, 0);
+            g.add(spark);
+            
+            g.position.copy(position);
+            g.userData = {
+                type: 'box',
+                fuse, spark, rockets,
+                startTime: Date.now(),
+                fuseComplete: false,
+                currentRocket: 0,
+                lastLaunchTime: 0,
+                nextDelay: 0,
+                flyingRockets: [],
+                colorSchemes: [getNextColorScheme(), getNextColorScheme(), getNextColorScheme(), getNextColorScheme(), getNextColorScheme()]
+            };
+            return g;
+        }
+        
+        // Place firework
+        document.addEventListener('click', () => {
+            if (!isPlaying) return;
+            
+            const pos = new THREE.Vector3(
+                camera.position.x - Math.sin(yaw) * 2,
+                0,
+                camera.position.z - Math.cos(yaw) * 2
+            );
+            
+            let fw;
+            if (selectedType === 'rocket') fw = createRocket(pos);
+            else if (selectedType === 'fountain') fw = createFountain(pos);
+            else fw = createBox(pos);
+            
+            scene.add(fw);
+            fireworks.push(fw);
+        });
+        
+        // Select type
+        function selectType(type) {
+            selectedType = type;
+            document.querySelectorAll('.firework-btn').forEach(btn => btn.classList.remove('selected'));
+            document.getElementById('btn-' + type).classList.add('selected');
+        }
+        window.selectType = selectType;
+        
+        document.getElementById('btn-rocket').onclick = () => selectType('rocket');
+        document.getElementById('btn-fountain').onclick = () => selectType('fountain');
+        document.getElementById('btn-box').onclick = () => selectType('box');
+        
+        // Update fireworks
+        function updateFireworks() {
+            const now = Date.now();
+            
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                const fw = fireworks[i];
+                const d = fw.userData;
+                const elapsed = now - d.startTime;
+                const fuseProgress = Math.min(elapsed / 3000, 1);
+                
+                if (d.type === 'rocket') {
+                    if (!d.launched) {
+                        // Fuse burning
+                        const rem = 1 - fuseProgress;
+                        d.fuse.scale.x = Math.max(0.01, rem);
+                        d.fuse.position.x = 0.12 * rem;
+                        d.spark.position.x = 0.25 * rem;
+                        
+                        // Sparks
+                        if (Math.random() < 0.4) {
+                            const sp = fw.position.clone();
+                            sp.x += d.spark.position.x;
+                            sp.y += 0.08;
+                            addParticle(sp, [1, 0.7, 0.2], new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.02, (Math.random()-0.5)*0.02));
+                        }
+                        
+                        if (fuseProgress >= 1) {
+                            d.launched = true;
+                            d.fuse.visible = false;
+                            d.spark.visible = false;
+                        }
+                    } else {
+                        // Flying!
+                        fw.position.y += 0.4;
+                        
+                        // Trail
+                        if (Math.random() < 0.5) {
+                            addParticle(fw.position.clone(), [1, 0.7, 0.2], new THREE.Vector3((Math.random()-0.5)*0.01, -0.02, (Math.random()-0.5)*0.01));
+                        }
+                        
+                        if (fw.position.y >= d.targetHeight) {
+                            createExplosion(fw.position, d.colorScheme, 50, 0.25);
+                            scene.remove(fw);
+                            fireworks.splice(i, 1);
+                        }
+                    }
+                }
+                
+                else if (d.type === 'fountain') {
+                    if (!d.active) {
+                        const rem = 1 - fuseProgress;
+                        d.fuse.scale.x = Math.max(0.01, rem);
+                        d.fuse.position.x = 0.15 * rem;
+                        d.spark.position.x = 0.26 * rem;
+                        
+                        if (Math.random() < 0.4) {
+                            const sp = fw.position.clone();
+                            sp.x += d.spark.position.x;
+                            sp.y += 0.08;
+                            addParticle(sp, [1, 0.7, 0.2], new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.02, (Math.random()-0.5)*0.02));
+                        }
+                        
+                        if (fuseProgress >= 1) {
+                            d.active = true;
+                            d.activeStartTime = now;
+                            d.fuse.visible = false;
+                            d.spark.visible = false;
+                        }
+                    } else {
+                        // Spraying!
+                        if (now - d.activeStartTime < 4000) {
+                            for (let j = 0; j < 4; j++) {
+                                const color = d.colorScheme[Math.floor(Math.random() * d.colorScheme.length)];
+                                const pos = fw.position.clone();
+                                pos.y += 0.18;
+                                addParticle(pos, color, new THREE.Vector3(
+                                    (Math.random()-0.5)*0.06,
+                                    0.18 + Math.random()*0.1,
+                                    (Math.random()-0.5)*0.06
+                                ));
+                            }
+                        } else {
+                            scene.remove(fw);
+                            fireworks.splice(i, 1);
+                        }
+                    }
+                }
+                
+                else if (d.type === 'box') {
+                    if (!d.fuseComplete) {
+                        const rem = 1 - fuseProgress;
+                        d.fuse.scale.x = Math.max(0.01, rem);
+                        d.fuse.position.x = 0.38 * rem;
+                        d.spark.position.x = 0.54 * rem;
+                        
+                        if (Math.random() < 0.4) {
+                            const sp = fw.position.clone();
+                            sp.x += d.spark.position.x;
+                            sp.y += 0.08;
+                            addParticle(sp, [1, 0.7, 0.2], new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.02, (Math.random()-0.5)*0.02));
+                        }
+                        
+                        if (fuseProgress >= 1) {
+                            d.fuseComplete = true;
+                            d.lastLaunchTime = now;
+                            d.nextDelay = 100;
+                            d.fuse.visible = false;
+                            d.spark.visible = false;
+                        }
+                    } else {
+                        // Launch rockets
+                        if (d.currentRocket < 5 && now - d.lastLaunchTime >= d.nextDelay) {
+                            const rocketPos = fw.position.clone();
+                            rocketPos.x += -0.15 + d.currentRocket * 0.075;
+                            rocketPos.y += 0.17;
+                            
+                            d.flyingRockets.push({
+                                position: rocketPos,
+                                velocity: new THREE.Vector3((Math.random()-0.5)*0.02, 0.35, (Math.random()-0.5)*0.02),
+                                colorScheme: d.colorSchemes[d.currentRocket],
+                                targetHeight: fw.position.y + 8 + Math.random() * 5
+                            });
+                            
+                            d.rockets[d.currentRocket].visible = false;
+                            d.currentRocket++;
+                            d.lastLaunchTime = now;
+                            d.nextDelay = 200 + Math.random() * 1200;
+                        }
+                        
+                        // Update flying rockets
+                        for (let j = d.flyingRockets.length - 1; j >= 0; j--) {
+                            const r = d.flyingRockets[j];
+                            r.position.add(r.velocity);
+                            
+                            if (Math.random() < 0.4) {
+                                addParticle(r.position.clone(), [1, 0.7, 0.2], new THREE.Vector3((Math.random()-0.5)*0.01, -0.02, (Math.random()-0.5)*0.01));
+                            }
+                            
+                            if (r.position.y >= r.targetHeight) {
+                                createExplosion(r.position, r.colorScheme, 30, 0.18);
+                                d.flyingRockets.splice(j, 1);
+                            }
+                        }
+                        
+                        if (d.currentRocket >= 5 && d.flyingRockets.length === 0) {
+                            scene.remove(fw);
+                            fireworks.splice(i, 1);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Update player
+        function updatePlayer() {
+            if (!isPlaying) return;
+            
+            const forwardX = -Math.sin(yaw);
+            const forwardZ = -Math.cos(yaw);
+            const rightX = Math.cos(yaw);
+            const rightZ = -Math.sin(yaw);
+            
+            let moveX = 0, moveZ = 0;
+            
+            if (keys.w) { moveX += forwardX; moveZ += forwardZ; }
+            if (keys.s) { moveX -= forwardX; moveZ -= forwardZ; }
+            if (keys.d) { moveX += rightX; moveZ += rightZ; }
+            if (keys.a) { moveX -= rightX; moveZ -= rightZ; }
+            
+            const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+            if (len > 0) {
+                camera.position.x += (moveX / len) * moveSpeed;
+                camera.position.z += (moveZ / len) * moveSpeed;
+            }
+            
+            camera.position.x = Math.max(-9, Math.min(9, camera.position.x));
+            camera.position.z = Math.max(-90, Math.min(90, camera.position.z));
+        }
+        
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePlayer();
+            updateFireworks();
+            updateParticles();
+            renderer.render(scene, camera);
+        }
+        
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        animate();
+    </script>
+</body>
+</html>
