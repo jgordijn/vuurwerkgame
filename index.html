@@ -224,9 +224,9 @@
         document.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
             if (key in keys) keys[key] = true;
-            if (key === '1') selectType('rocket');
-            if (key === '2') selectType('fountain');
-            if (key === '3') selectType('box');
+            if (e.code === 'Digit1' || key === '1') selectType('rocket');
+            if (e.code === 'Digit2' || key === '2') selectType('fountain');
+            if (e.code === 'Digit3' || key === '3') selectType('box');
         });
         
         document.addEventListener('keyup', (e) => {
